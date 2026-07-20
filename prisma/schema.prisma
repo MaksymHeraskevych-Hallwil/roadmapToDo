@@ -1,0 +1,54 @@
+// Схема Prisma — тут описані таблиці бази та зв'язки між ними.
+// Після зміни цього файлу запускай `npx prisma migrate dev`,
+// щоб Prisma створила/оновила таблиці в PostgreSQL.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  // Генеруємо клієнт у форматі CommonJS, бо бекенд використовує require().
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Сам URL береться з .env через prisma.config.ts (process.env.DATABASE_URL).
+}
+
+// Користувач: той, хто реєструється, пише пости й коментарі.
+model User {
+  id        Int       @id @default(autoincrement())
+  email     String    @unique // email унікальний — двох однакових бути не може
+  password  String    // тут зберігається ХЕШ пароля, не сам пароль
+  name      String?   // ? означає, що поле необов'язкове
+  posts     Post[]    // один користувач -> багато постів
+  comments  Comment[] // один користувач -> багато коментарів
+  createdAt DateTime  @default(now())
+}
+
+// Пост у блозі.
+model Post {
+  id        Int       @id @default(autoincrement())
+  title     String
+  content   String
+  published Boolean   @default(false)
+  // Зв'язок з автором: поле authorId зберігає id користувача-автора.
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId  Int
+  comments  Comment[] // один пост -> багато коментарів
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt // оновлюється автоматично при кожній зміні
+}
+
+// Коментар до поста.
+model Comment {
+  id        Int      @id @default(autoincrement())
+  content   String
+  // До якого поста належить коментар:
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    Int
+  // Хто написав коментар:
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
