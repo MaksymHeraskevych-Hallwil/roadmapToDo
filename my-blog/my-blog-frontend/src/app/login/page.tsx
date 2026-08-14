@@ -21,14 +21,17 @@ export default function LoginPage() {
     try {
       if (isLoginMode) {
         const res = await api.post('/auth/login', { email, password })
-        login(res.data.user, res.data.token)
+        login(res.user, res.token)
       } else {
-        const res = await api.post('/auth/register', { email, password, name })
-        login(res.data.user, res.data.token)
+        // Реєстрація токена не повертає — після неї одразу логінимось
+        await api.post('/auth/register', { email, password, name })
+        const res = await api.post('/auth/login', { email, password })
+        login(res.user, res.token)
       }
       router.push('/')
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Помилка')
+      // message в ApiError — це поле `error` з відповіді бекенду
+      setError(err.message || 'Помилка')
     }
   }
 

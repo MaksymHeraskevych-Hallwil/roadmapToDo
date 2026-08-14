@@ -12,8 +12,8 @@ export default function PostPage() {
   const { user } = useAuthStore()
 
   const fetchPost = async () => {
-    const res = await api.get(`/posts/${id}`)
-    setPost(res.data)
+    const data = await api.get(`/posts/${id}`)
+    setPost(data)
   }
 
   useEffect(() => { fetchPost() }, [id])
