@@ -1,7 +1,6 @@
 import { Request, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import prisma from '../lib/prisma'
+import { cacheDel, cacheKeys } from '../lib/cache'
 
 // Створити коментар
 export const createComment = async (req: Request, res: Response) => {
@@ -15,6 +14,10 @@ export const createComment = async (req: Request, res: Response) => {
       },
       include: { author: { select: { id: true, name: true } } },
     })
+
+    // GET /posts/:id віддає пост разом з коментарями — його кеш застарів
+    await cacheDel(cacheKeys.post(comment.postId))
+
     res.status(201).json(comment)
   } catch (error) {
     res.status(500).json({ error: 'Помилка при створенні коментаря' })
@@ -37,6 +40,9 @@ export const updateComment = async (req: Request, res: Response) => {
       where: { id: Number(id) },
       data: { content },
     })
+
+    await cacheDel(cacheKeys.post(comment.postId))
+
     res.json(updated)
   } catch (error) {
     res.status(500).json({ error: 'Помилка' })
@@ -60,6 +66,9 @@ export const deleteComment = async (req: Request, res: Response) => {
     }
 
     await prisma.comment.delete({ where: { id: Number(id) } })
+
+    await cacheDel(cacheKeys.post(comment.postId))
+
     res.status(204).send()
   } catch (error) {
     res.status(500).json({ error: 'Помилка' })

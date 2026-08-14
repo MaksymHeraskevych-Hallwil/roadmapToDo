@@ -1,0 +1,40 @@
+# Окрема одноразова база ТІЛЬКИ для інтеграційних тестів.
+#
+# Порт тут відкритий свідомо: Jest запускається на хості, а не в
+# контейнері, тому мусить достукатись до бази. Це не продакшн-компоуз
+# (у docker-compose.yml база портів назовні не має).
+#
+# Дані лежать у tmpfs — після `down` від них не лишається нічого.
+
+services:
+  # Фіксованих container_name тут навмисно немає: інакше дві копії
+  # проєкту на одній машині борються за одне й те саме імʼя контейнера.
+  # Compose сам додасть префікс проєкту.
+  postgres-test:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: blog_test
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d blog_test']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis-test:
+    image: redis:7-alpine
+    # 6380, щоб не зачепити локальний Redis на 6379, якщо він є
+    ports:
+      - '6380:6379'
+    # Без збереження на диск — кеш у тестах має бути одноразовим
+    command: redis-server --save ''
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 30
