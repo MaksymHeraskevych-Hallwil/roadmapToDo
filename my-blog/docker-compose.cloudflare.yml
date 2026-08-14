@@ -1,0 +1,39 @@
+# Quick tunnel — публічна адреса без домену й без акаунта Cloudflare.
+#
+# Запуск:
+#   docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml up -d
+#
+# Адреса зʼявиться в логах:
+#   docker compose logs cloudflared-quick | grep trycloudflare.com
+#
+# ЩО ЦЕ ДАЄ: публічний HTTPS з валідним сертифікатом Cloudflare і їхню
+# мережу перед твоїм ноутбуком — порти на роутері відкривати не треба.
+#
+# ЧОГО ЦЕ НЕ ДАЄ: WAF, Bot Fight Mode, rate limiting rules, кеш-правила.
+# Усе це налаштування зони (домену) в панелі Cloudflare, а домену тут
+# немає. Захист лишається тільки той, що в нашому nginx.
+#
+# Адреса живе, поки живий контейнер, і після рестарту буде інша.
+# Сам Cloudflare позиціонує quick tunnel як інструмент для тестів.
+
+services:
+  nginx:
+    environment:
+      # cloudflared приходить із docker-мережі, а не з діапазонів
+      # Cloudflare — без цього рядка в логах був би IP контейнера
+      # замість IP відвідувача, і rate limiting рахувався б на нього.
+      EXTRA_REAL_IP_RANGES: '172.16.0.0/12'
+      # У режимі тунелю має лишатись false: allow-list пропускає
+      # тільки мережі Cloudflare, а тунель іде зсередини.
+      CLOUDFLARE_ONLY: 'false'
+
+  cloudflared-quick:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    # Ціль — саме https://nginx:443, а не порт 80.
+    # На 80 у нас стоїть редірект на https, і тунель зациклився б:
+    # 80 → 301 на https → назад у тунель → знову 80.
+    # --no-tls-verify бо сертифікат origin самопідписаний.
+    command: tunnel --no-autoupdate --url https://nginx:443 --no-tls-verify
+    depends_on:
+      - nginx
