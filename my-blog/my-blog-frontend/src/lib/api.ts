@@ -12,16 +12,23 @@
 // Локально без Docker — падаємо на 5050 порт.
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api'
 
+/** Тіло помилки, яке віддає бекенд. */
+interface ErrorBody {
+  error?: string
+  details?: { field: string; message: string }[]
+}
+
 /** Помилка з відповіді сервера: тримає статус і розпарсене тіло. */
 export class ApiError extends Error {
   status: number
-  data: any
+  data: ErrorBody | null
 
-  constructor(status: number, data: any) {
-    super(data?.error || `Запит завершився помилкою ${status}`)
+  constructor(status: number, data: unknown) {
+    const body = (data ?? null) as ErrorBody | null
+    super(body?.error || `Запит завершився помилкою ${status}`)
     this.name = 'ApiError'
     this.status = status
-    this.data = data
+    this.data = body
   }
 }
 
@@ -58,8 +65,8 @@ const request = async <T>(
 }
 
 export const api = {
-  get: <T = any>(path: string) => request<T>('GET', path),
-  post: <T = any>(path: string, body?: unknown) => request<T>('POST', path, body),
-  put: <T = any>(path: string, body?: unknown) => request<T>('PUT', path, body),
-  delete: <T = any>(path: string) => request<T>('DELETE', path),
+  get: <T = unknown>(path: string) => request<T>('GET', path),
+  post: <T = unknown>(path: string, body?: unknown) => request<T>('POST', path, body),
+  put: <T = unknown>(path: string, body?: unknown) => request<T>('PUT', path, body),
+  delete: <T = unknown>(path: string) => request<T>('DELETE', path),
 }
