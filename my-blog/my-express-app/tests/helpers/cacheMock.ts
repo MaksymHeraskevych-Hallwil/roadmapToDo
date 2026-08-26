@@ -8,8 +8,12 @@ export const cacheMock = {
   cacheSet: jest.fn().mockResolvedValue(undefined),
   cacheDel: jest.fn().mockResolvedValue(undefined),
   cacheDisconnect: jest.fn().mockResolvedValue(undefined),
+  getListVersion: jest.fn().mockResolvedValue(1),
+  bumpListVersion: jest.fn().mockResolvedValue(undefined),
   cacheKeys: {
-    postsList: 'posts:list',
+    listVersion: 'posts:list:version',
+    postsList: (version: number, page: number, limit: number) =>
+      `posts:list:v${version}:p${page}:l${limit}`,
     post: (id: number | string) => `post:${id}`,
   },
   redis: null,

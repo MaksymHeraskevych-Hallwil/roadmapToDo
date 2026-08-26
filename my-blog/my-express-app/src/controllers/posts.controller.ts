@@ -1,27 +1,59 @@
 import prisma from '../lib/prisma'
-import { cacheGet, cacheSet, cacheDel, cacheKeys } from '../lib/cache'
+import {
+  cacheGet,
+  cacheSet,
+  cacheDel,
+  cacheKeys,
+  getListVersion,
+  bumpListVersion,
+} from '../lib/cache'
 
-// Отримати всі пости
+// Отримати пости посторінково
 export const getAllPosts = async (req, res) => {
   try {
-    // 1. Спершу питаємо кеш (cache-aside / read-through)
-    const cached = await cacheGet(cacheKeys.postsList)
-    if (cached) {
-      res.set('X-Cache', 'HIT')
-      return res.json(cached)
+    // page і limit уже перевірені й приведені до чисел у middleware
+    const { page, limit } = req.validatedQuery
+    const skip = (page - 1) * limit
+
+    // Ключ кешу включає версію списку: при зміні даних версія
+    // зростає, і всі закешовані сторінки стають недосяжними.
+    const version = await getListVersion()
+    const key = version ? cacheKeys.postsList(version, page, limit) : null
+
+    if (key) {
+      const cached = await cacheGet(key)
+      if (cached) {
+        res.set('X-Cache', 'HIT')
+        return res.json(cached)
+      }
     }
 
-    // 2. Промах — йдемо в базу
-    const posts = await prisma.post.findMany({
-      include: { author: { select: { id: true, name: true } } },
-      orderBy: { createdAt: 'desc' },
-    })
+    // Один запит за даними сторінки, другий — за загальною кількістю.
+    // Разом, бо вони незалежні.
+    const [posts, total] = await Promise.all([
+      prisma.post.findMany({
+        include: { author: { select: { id: true, name: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.post.count(),
+    ])
 
-    // 3. І кладемо результат у кеш для наступних запитів
-    await cacheSet(cacheKeys.postsList, posts)
+    const payload = {
+      data: posts,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    }
+
+    if (key) await cacheSet(key, payload)
 
     res.set('X-Cache', 'MISS')
-    res.json(posts)
+    res.json(payload)
   } catch (error) {
     res.status(500).json({ error: 'Помилка при отриманні постів' })
   }
@@ -73,8 +105,8 @@ export const createPost = async (req, res) => {
       },
     })
 
-    // Список змінився — старий кеш більше не валідний
-    await cacheDel(cacheKeys.postsList)
+    // Список змінився — усі закешовані сторінки більше не валідні
+    await bumpListVersion()
 
     res.status(201).json(post)
   } catch (error) {
@@ -100,7 +132,7 @@ export const updatePost = async (req, res) => {
     })
 
     // Змінився і сам пост, і його рядок у списку
-    await cacheDel(cacheKeys.postsList, cacheKeys.post(id))
+    await Promise.all([bumpListVersion(), cacheDel(cacheKeys.post(id))])
 
     res.json(updated)
   } catch (error) {
@@ -121,7 +153,7 @@ export const deletePost = async (req, res) => {
 
     await prisma.post.delete({ where: { id: Number(id) } })
 
-    await cacheDel(cacheKeys.postsList, cacheKeys.post(id))
+    await Promise.all([bumpListVersion(), cacheDel(cacheKeys.post(id))])
 
     res.status(204).send()
   } catch (error) {

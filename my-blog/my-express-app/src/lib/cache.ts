@@ -79,8 +79,42 @@ export const cacheDel = async (...keys: string[]): Promise<void> => {
  * із читанням через друкарську помилку в рядку.
  */
 export const cacheKeys = {
-  postsList: 'posts:list',
+  listVersion: 'posts:list:version',
+  postsList: (version: number, page: number, limit: number) =>
+    `posts:list:v${version}:p${page}:l${limit}`,
   post: (id: number | string) => `post:${id}`,
+}
+
+/**
+ * З пагінацією кеш списку — це не один ключ, а по ключу на кожну
+ * комбінацію сторінки й розміру. Видаляти їх поштучно неможливо,
+ * а бігати по базі через KEYS/SCAN на кожен новий пост — дорого.
+ *
+ * Тому в ключ вшито номер версії. Щоб «скинути весь список»,
+ * достатньо збільшити версію на одиницю: старі ключі стають
+ * недосяжними й тихо помирають за TTL.
+ */
+export const getListVersion = async (): Promise<number | null> => {
+  if (!redis) return null
+  try {
+    const current = await redis.get(cacheKeys.listVersion)
+    if (current) return Number(current)
+    await redis.set(cacheKeys.listVersion, '1')
+    return 1
+  } catch (error) {
+    // Redis лежить — працюємо без кешу
+    return null
+  }
+}
+
+/** Зробити всі закешовані сторінки списку недійсними. */
+export const bumpListVersion = async (): Promise<void> => {
+  if (!redis) return
+  try {
+    await redis.incr(cacheKeys.listVersion)
+  } catch (error) {
+    // Найгірше — читач до TTL побачить старий список
+  }
 }
 
 /** Закрити зʼєднання — потрібно тестам, щоб Jest не висів. */

@@ -1,6 +1,6 @@
 import request from 'supertest'
 import app from '../../src/app'
-import { redis, cacheKeys } from '../../src/lib/cache'
+import { redis, cacheKeys, getListVersion } from '../../src/lib/cache'
 import { createUser, createPost, TestUser } from './helpers'
 
 /**
@@ -35,10 +35,12 @@ describe('кешування через Redis (інтеграція)', () => {
       await createPost(author)
       await request(app).get('/api/posts').expect(200)
 
-      const raw = await redis!.get(cacheKeys.postsList)
-      expect(raw).not.toBeNull()
+      const version = await getListVersion()
+      const key = cacheKeys.postsList(version!, 1, 10)
 
-      const ttl = await redis!.ttl(cacheKeys.postsList)
+      expect(await redis!.get(key)).not.toBeNull()
+
+      const ttl = await redis!.ttl(key)
       expect(ttl).toBeGreaterThan(0)
       expect(ttl).toBeLessThanOrEqual(60)
     })
@@ -51,7 +53,7 @@ describe('кешування через Redis (інтеграція)', () => {
 
       const res = await request(app).get('/api/posts').expect(200)
       expect(res.headers['x-cache']).toBe('MISS')
-      expect(res.body).toHaveLength(2)
+      expect(res.body.data).toHaveLength(2)
     })
 
     it('оновлення поста скидає кеш списку', async () => {
@@ -65,7 +67,7 @@ describe('кешування через Redis (інтеграція)', () => {
         .expect(200)
 
       const res = await request(app).get('/api/posts').expect(200)
-      expect(res.body[0].title).toBe('Оновлений')
+      expect(res.body.data[0].title).toBe('Оновлений')
     })
 
     it('видалення поста скидає кеш списку', async () => {
@@ -78,7 +80,7 @@ describe('кешування через Redis (інтеграція)', () => {
         .expect(204)
 
       const res = await request(app).get('/api/posts').expect(200)
-      expect(res.body).toHaveLength(0)
+      expect(res.body.data).toHaveLength(0)
     })
 
     it('невдала спроба редагувати чужий пост кеш не скидає', async () => {

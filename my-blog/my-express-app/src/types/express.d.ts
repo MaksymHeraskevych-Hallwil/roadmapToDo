@@ -9,6 +9,9 @@ declare global {
   namespace Express {
     interface Request {
       user?: JwtUser
+      // Розібрані параметри запиту з validate(schema, 'query').
+      // Окреме поле, бо req.query в Express 5 лише для читання.
+      validatedQuery?: any
     }
   }
 }

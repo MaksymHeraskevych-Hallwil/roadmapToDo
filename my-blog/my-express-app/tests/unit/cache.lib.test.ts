@@ -20,6 +20,7 @@ describe('кеш-шар (src/lib/cache.ts)', () => {
     redisMock.get.mockReset()
     redisMock.set.mockReset()
     redisMock.del.mockReset()
+    redisMock.incr.mockReset()
   })
 
   describe('cacheGet', () => {
@@ -99,10 +100,46 @@ describe('кеш-шар (src/lib/cache.ts)', () => {
 
   describe('cacheKeys', () => {
     it('дає стабільні імена ключів', () => {
-      expect(cache.cacheKeys.postsList).toBe('posts:list')
+      expect(cache.cacheKeys.postsList(1, 2, 10)).toBe('posts:list:v1:p2:l10')
       expect(cache.cacheKeys.post(42)).toBe('post:42')
       // id з req.params приходить рядком — ключ має бути той самий
       expect(cache.cacheKeys.post('42')).toBe('post:42')
+    })
+  })
+
+  describe('версія списку', () => {
+    it('повертає наявну версію', async () => {
+      redisMock.get.mockResolvedValue('5')
+
+      await expect(cache.getListVersion()).resolves.toBe(5)
+    })
+
+    it('ініціалізує версію одиницею, якщо ключа ще немає', async () => {
+      redisMock.get.mockResolvedValue(null)
+      redisMock.set.mockResolvedValue('OK')
+
+      await expect(cache.getListVersion()).resolves.toBe(1)
+      expect(redisMock.set).toHaveBeenCalledWith('posts:list:version', '1')
+    })
+
+    it('повертає null, якщо Redis лежить — кешування просто вимикається', async () => {
+      redisMock.get.mockRejectedValue(new Error('ECONNREFUSED'))
+
+      await expect(cache.getListVersion()).resolves.toBeNull()
+    })
+
+    it('bumpListVersion робить INCR', async () => {
+      redisMock.incr.mockResolvedValue(2)
+
+      await cache.bumpListVersion()
+
+      expect(redisMock.incr).toHaveBeenCalledWith('posts:list:version')
+    })
+
+    it('bumpListVersion не кидає помилку при мертвому Redis', async () => {
+      redisMock.incr.mockRejectedValue(new Error('ECONNREFUSED'))
+
+      await expect(cache.bumpListVersion()).resolves.toBeUndefined()
     })
   })
 })

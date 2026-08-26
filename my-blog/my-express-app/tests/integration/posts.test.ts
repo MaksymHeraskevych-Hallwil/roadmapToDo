@@ -55,10 +55,11 @@ describe('CRUD /api/posts (інтеграція)', () => {
 
       const res = await request(app).get('/api/posts').expect(200)
 
-      expect(res.body).toHaveLength(2)
-      expect(res.body[0].author).toMatchObject({ id: author.id, name: 'Author' })
+      expect(res.body.data).toHaveLength(2)
+      expect(res.body.data[0].author).toMatchObject({ id: author.id, name: 'Author' })
       // Новіші пости — першими
-      expect(res.body[0].title).toBe('Другий')
+      expect(res.body.data[0].title).toBe('Другий')
+      expect(res.body.meta).toMatchObject({ page: 1, limit: 10, total: 2 })
     })
 
     it('віддає окремий пост з коментарями', async () => {

@@ -13,6 +13,10 @@ import {
 import { prismaMock, mockRequest, mockResponse } from '../helpers/prismaMock'
 
 const AUTHOR = { userId: 1, email: 'author@b.com' }
+
+/** Запит списку з уже провалідованими параметрами пагінації */
+const listRequest = (page = 1, limit = 10) =>
+  mockRequest({ validatedQuery: { page, limit } })
 const STRANGER = { userId: 2, email: 'stranger@b.com' }
 
 describe('posts.controller', () => {
@@ -20,21 +24,61 @@ describe('posts.controller', () => {
     it('віддає пости, відсортовані від нових до старих', async () => {
       const posts = [{ id: 2 }, { id: 1 }]
       prismaMock.post.findMany.mockResolvedValue(posts)
+      prismaMock.post.count.mockResolvedValue(2)
 
       const res = mockResponse()
-      await getAllPosts(mockRequest(), res)
+      await getAllPosts(listRequest(), res)
 
       expect(prismaMock.post.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ orderBy: { createdAt: 'desc' } })
       )
-      expect(res.json).toHaveBeenCalledWith(posts)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ data: posts })
+      )
+    })
+
+    it('рахує skip/take за номером сторінки', async () => {
+      prismaMock.post.findMany.mockResolvedValue([])
+      prismaMock.post.count.mockResolvedValue(0)
+
+      const res = mockResponse()
+      await getAllPosts(listRequest(3, 10), res)
+
+      expect(prismaMock.post.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 20, take: 10 })
+      )
+    })
+
+    it('повертає метадані пагінації', async () => {
+      prismaMock.post.findMany.mockResolvedValue([])
+      prismaMock.post.count.mockResolvedValue(25)
+
+      const res = mockResponse()
+      await getAllPosts(listRequest(2, 10), res)
+
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          meta: { page: 2, limit: 10, total: 25, totalPages: 3 },
+        })
+      )
+    })
+
+    it('на порожній базі totalPages не менше 1', async () => {
+      prismaMock.post.findMany.mockResolvedValue([])
+      prismaMock.post.count.mockResolvedValue(0)
+
+      const res = mockResponse()
+      await getAllPosts(listRequest(), res)
+
+      expect(res.json.mock.calls[0][0].meta.totalPages).toBe(1)
     })
 
     it('повертає 500 при помилці бази', async () => {
       prismaMock.post.findMany.mockRejectedValue(new Error('db down'))
+      prismaMock.post.count.mockResolvedValue(0)
 
       const res = mockResponse()
-      await getAllPosts(mockRequest(), res)
+      await getAllPosts(listRequest(), res)
 
       expect(res.status).toHaveBeenCalledWith(500)
     })
