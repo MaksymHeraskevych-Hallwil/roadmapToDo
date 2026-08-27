@@ -15,6 +15,7 @@ if (!/blog_test/.test(process.env.DATABASE_URL || '')) {
 beforeEach(async () => {
   await prisma.comment.deleteMany()
   await prisma.post.deleteMany()
+  await prisma.media.deleteMany()
   await prisma.user.deleteMany()
   if (redis) await redis.flushall()
 })

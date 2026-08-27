@@ -64,7 +64,29 @@ const request = async <T>(
   return payload as T
 }
 
+/**
+ * Завантаження файлу. Окремо від request(), бо тут не можна ставити
+ * Content-Type руками: браузер має підставити його сам разом із
+ * boundary для multipart/form-data.
+ */
+const upload = async <T>(path: string, file: File): Promise<T> => {
+  const form = new FormData()
+  form.append('file', file)
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: authHeader(),
+    body: form,
+  })
+
+  const payload = res.status === 204 ? null : await res.json().catch(() => null)
+  if (!res.ok) throw new ApiError(res.status, payload)
+
+  return payload as T
+}
+
 export const api = {
+  upload,
   get: <T = unknown>(path: string) => request<T>('GET', path),
   post: <T = unknown>(path: string, body?: unknown) => request<T>('POST', path, body),
   put: <T = unknown>(path: string, body?: unknown) => request<T>('PUT', path, body),

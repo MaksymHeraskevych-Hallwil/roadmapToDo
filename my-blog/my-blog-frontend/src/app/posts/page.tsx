@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { api, ApiError } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import Link from 'next/link'
-import type { Post, PaginationMeta, Paginated } from '@/types'
+import type { Post, PaginationMeta, Paginated, Media } from '@/types'
 
 export default function PostsPage() {
   const [posts, setPosts] = useState<Post[]>([])
@@ -13,6 +13,8 @@ export default function PostsPage() {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [error, setError] = useState('')
+  const [image, setImage] = useState<Media | null>(null)
+  const [uploading, setUploading] = useState(false)
 
   const { user, login } = useAuthStore()
 
@@ -43,13 +45,36 @@ export default function PostsPage() {
     fetchPosts()
   }, [fetchPosts])
 
+  // Картинку вантажимо одразу при виборі: до моменту сабміту вона вже
+  // у сховищі, і в пост іде тільки її id.
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setError('')
+    setUploading(true)
+    try {
+      setImage(await api.upload<Media>('/media', file))
+    } catch (err) {
+      const apiError = err instanceof ApiError ? err : null
+      setError(
+        apiError?.data?.error ||
+          (err instanceof Error ? err.message : 'Не вдалось завантажити зображення')
+      )
+    } finally {
+      setUploading(false)
+      e.target.value = '' // щоб той самий файл можна було вибрати ще раз
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     try {
-      await api.post('/posts', { title, content })
+      await api.post('/posts', { title, content, imageId: image?.id ?? null })
       setTitle('')
       setContent('')
+      setImage(null)
       // Новий пост завжди зверху — повертаємось на першу сторінку
       if (page === 1) {
         fetchPosts()
@@ -84,8 +109,46 @@ export default function PostsPage() {
             value={content}
             onChange={(e) => setContent(e.target.value)}
           />
+          {/* Обкладинка */}
+          <div className="mb-3">
+            <label className="inline-block cursor-pointer text-sm text-blue-600 font-medium">
+              {uploading ? 'Завантаження…' : image ? 'Замінити зображення' : '+ Додати зображення'}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                onChange={handleFile}
+                disabled={uploading}
+              />
+            </label>
+
+            {image && (
+              <div className="mt-2 relative inline-block">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={image.url}
+                  alt="Обкладинка"
+                  className="h-32 rounded border object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setImage(null)}
+                  className="absolute top-1 right-1 bg-black/60 text-white w-6 h-6 rounded-full text-sm"
+                  aria-label="Прибрати зображення"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </div>
+
           {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
-          <button className="bg-blue-600 text-white px-4 py-2 rounded">Створити пост</button>
+          <button
+            disabled={uploading}
+            className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+          >
+            Створити пост
+          </button>
         </form>
       ) : (
         <p className="text-gray-500 mb-8">Увійдіть, щоб створити пост.</p>
@@ -95,6 +158,14 @@ export default function PostsPage() {
       <div className="space-y-4">
         {posts.map((post) => (
           <div key={post.id} className="bg-white p-6 rounded-xl border">
+            {post.image && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={post.image.url}
+                alt={post.title}
+                className="w-full h-48 object-cover rounded-lg mb-4"
+              />
+            )}
             <h2 className="text-xl font-bold">{post.title}</h2>
             <p className="text-gray-700">{post.content}</p>
 

@@ -8,6 +8,12 @@ import {
   bumpListVersion,
 } from '../lib/cache'
 
+/** Чи належить зображення цьому користувачу */
+const ownsMedia = async (imageId: number, userId: number): Promise<boolean> => {
+  const media = await prisma.media.findUnique({ where: { id: imageId } })
+  return Boolean(media && media.authorId === userId)
+}
+
 // Отримати пости посторінково
 export const getAllPosts = async (req, res) => {
   try {
@@ -32,7 +38,10 @@ export const getAllPosts = async (req, res) => {
     // Разом, бо вони незалежні.
     const [posts, total] = await Promise.all([
       prisma.post.findMany({
-        include: { author: { select: { id: true, name: true } } },
+        include: {
+          author: { select: { id: true, name: true } },
+          image: { select: { id: true, url: true } },
+        },
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
@@ -74,6 +83,7 @@ export const getPost = async (req, res) => {
       where: { id: Number(id) },
       include: {
         author: { select: { id: true, name: true } },
+        image: { select: { id: true, url: true } },
         comments: {
           include: { author: { select: { id: true, name: true } } },
           orderBy: { createdAt: 'desc' },
@@ -96,13 +106,21 @@ export const getPost = async (req, res) => {
 // Створити пост
 export const createPost = async (req, res) => {
   try {
-    const { title, content } = req.body
+    const { title, content, imageId } = req.body
+
+    // Чужу картинку до свого поста не причепиш
+    if (imageId && !(await ownsMedia(imageId, req.user.userId))) {
+      return res.status(403).json({ error: 'Це зображення належить іншому користувачу' })
+    }
+
     const post = await prisma.post.create({
       data: {
         title,
         content,
         authorId: req.user.userId,
+        imageId: imageId ?? null,
       },
+      include: { image: { select: { id: true, url: true } } },
     })
 
     // Список змінився — усі закешовані сторінки більше не валідні
@@ -118,7 +136,7 @@ export const createPost = async (req, res) => {
 export const updatePost = async (req, res) => {
   try {
     const { id } = req.params
-    const { title, content } = req.body
+    const { title, content, imageId } = req.body
 
     const post = await prisma.post.findUnique({ where: { id: Number(id) } })
     if (!post) return res.status(404).json({ error: 'Пост не знайдено' })
@@ -126,9 +144,15 @@ export const updatePost = async (req, res) => {
       return res.status(403).json({ error: 'Тільки автор може редагувати' })
     }
 
+    if (imageId && !(await ownsMedia(imageId, req.user.userId))) {
+      return res.status(403).json({ error: 'Це зображення належить іншому користувачу' })
+    }
+
     const updated = await prisma.post.update({
       where: { id: Number(id) },
-      data: { title, content },
+      // imageId undefined — поле не чіпаємо, null — прибираємо обкладинку
+      data: { title, content, ...(imageId !== undefined && { imageId }) },
+      include: { image: { select: { id: true, url: true } } },
     })
 
     // Змінився і сам пост, і його рядок у списку

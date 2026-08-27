@@ -44,6 +44,21 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      # S3-сумісне сховище для тестів завантаження картинок.
+      # У проді на цьому місці Cloudflare R2 — API той самий.
+      minio:
+        image: minio/minio:edge-cicd
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        ports:
+          - 9100:9000
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
     defaults:
       run:
         working-directory: my-blog/my-express-app
@@ -69,6 +84,15 @@ jobs:
 
       - name: Юніт-тести
         run: npm run test:unit
+
+      # Бакет створюємо тим самим mc, що й у docker-compose.test.yml
+      - name: Створити бакет у MinIO
+        run: |
+          docker run --rm --network host minio/mc:latest sh -c "
+            mc alias set local http://localhost:9100 minioadmin minioadmin &&
+            mc mb --ignore-existing local/blog-media-test &&
+            mc anonymous set download local/blog-media-test
+          "
 
       - name: Накотити міграції на тестову базу
         run: npx dotenv -e .env.test -- npx prisma migrate deploy

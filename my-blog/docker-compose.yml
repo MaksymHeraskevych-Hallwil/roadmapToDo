@@ -37,6 +37,43 @@ services:
       timeout: 3s
       retries: 10
 
+  # MinIO — локальна заміна Cloudflare R2 на час розробки.
+  # Те саме S3 API, тому код бекенду однаковий: щоб перейти на R2,
+  # достатньо змінити S3_* змінні (див. my-express-app/README.md).
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      # 9000 — S3 API: відкритий, бо браузер тягне картинки за прямим URL.
+      # 9001 — вебконсоль MinIO, зручно подивитись вміст бакета.
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Одноразовий контейнер: створює бакет і робить його публічним
+  # на читання, щоб <img src> працював без підпису запиту.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/blog-media &&
+      mc anonymous set download local/blog-media &&
+      echo 'Бакет blog-media готовий'
+      "
+
   backend:
     build: ./my-express-app
     depends_on:
@@ -44,9 +81,19 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: 'postgresql://postgres:password@postgres:5432/blog?schema=public'
       REDIS_URL: 'redis://redis:6379'
+      # Сховище картинок. Для переходу на Cloudflare R2 змінюються
+      # тільки ці п'ять рядків — код лишається той самий.
+      S3_ENDPOINT: 'http://minio:9000'
+      S3_BUCKET: 'blog-media'
+      S3_ACCESS_KEY_ID: 'minioadmin'
+      S3_SECRET_ACCESS_KEY: 'minioadmin'
+      # Адреса, за якою картинку тягне браузер (тобто з боку хоста)
+      S3_PUBLIC_URL: 'http://localhost:9000/blog-media'
       PORT: 5050
       JWT_SECRET: 'super-secret-key-change-this'
     # Перед стартом накатуємо міграції: у свіжому томі база порожня,
@@ -122,3 +169,4 @@ services:
 volumes:
   pgdata:
   nginx-certs:
+  minio-data:

@@ -5,6 +5,7 @@ import { redis } from './lib/cache'
 import authRoutes from './routes/auth.routes'
 import postsRoutes from './routes/posts.routes'
 import commentsRoutes from './routes/comments.routes'
+import mediaRoutes from './routes/media.routes'
 
 // Тут ми тільки збираємо застосунок, але НЕ піднімаємо сервер.
 // Завдяки цьому інтеграційні тести можуть передати `app` у supertest
@@ -17,6 +18,7 @@ app.use(express.json())
 app.use('/api/auth', authRoutes)
 app.use('/api/posts', postsRoutes)
 app.use('/api/comments', commentsRoutes)
+app.use('/api/media', mediaRoutes)
 
 // Головна
 app.get('/', (req, res) => {

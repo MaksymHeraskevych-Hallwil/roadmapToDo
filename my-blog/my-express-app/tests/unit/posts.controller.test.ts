@@ -124,9 +124,15 @@ describe('posts.controller', () => {
 
       await createPost(req, res)
 
-      expect(prismaMock.post.create).toHaveBeenCalledWith({
-        data: { title: 'T', content: 'C', authorId: AUTHOR.userId },
-      })
+      expect(prismaMock.post.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            title: 'T',
+            content: 'C',
+            authorId: AUTHOR.userId,
+          }),
+        })
+      )
       expect(res.status).toHaveBeenCalledWith(201)
     })
   })
@@ -145,10 +151,12 @@ describe('posts.controller', () => {
 
       await updatePost(req, res)
 
-      expect(prismaMock.post.update).toHaveBeenCalledWith({
-        where: { id: 3 },
-        data: { title: 'New', content: 'Body' },
-      })
+      expect(prismaMock.post.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 3 },
+          data: expect.objectContaining({ title: 'New', content: 'Body' }),
+        })
+      )
       expect(res.json).toHaveBeenCalledWith({ id: 3, title: 'New' })
     })
 

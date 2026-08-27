@@ -14,6 +14,13 @@ export interface Comment {
   createdAt: string
 }
 
+export interface Media {
+  id: number
+  url: string
+  mimeType?: string
+  size?: number
+}
+
 export interface Post {
   id: number
   title: string
@@ -21,6 +28,7 @@ export interface Post {
   published: boolean
   authorId: number
   author: Author
+  image: Media | null
   createdAt: string
   updatedAt: string
 }

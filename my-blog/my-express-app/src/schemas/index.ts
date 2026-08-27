@@ -28,6 +28,9 @@ export const loginSchema = z.object({
 export const createPostSchema = z.object({
   title: z.string().trim().min(1, 'Заголовок не може бути порожнім').max(200),
   content: z.string().trim().min(1, 'Текст не може бути порожнім').max(50_000),
+  // Обкладинка: id вже завантаженого через POST /api/media зображення.
+  // null — явно прибрати картинку при оновленні.
+  imageId: z.coerce.number().int().positive().nullable().optional(),
 })
 
 // При оновленні дозволяємо надіслати лише частину полів,
