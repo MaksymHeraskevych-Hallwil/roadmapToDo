@@ -1,0 +1,16 @@
+# node_modules з хоста не можна тягнути в образ: там бінарники під macOS,
+# а всередині контейнера Linux. Залежності ставить сам Dockerfile.
+node_modules
+dist
+
+# Секрети й тестове оточення в образі не потрібні
+.env
+.env.bak
+.env.test
+
+# Тести в продакшн-образ не їдуть
+tests
+jest.config.js
+jest.integration.config.js
+docker-compose.test.yml
+coverage

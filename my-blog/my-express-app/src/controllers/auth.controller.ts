@@ -1,9 +1,6 @@
-import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-
-const prisma = new PrismaClient()
-const JWT_SECRET = process.env.JWT_SECRET
+import prisma from '../lib/prisma'
 
 // Реєстрація нового користувача
 export const register = async (req, res) => {
@@ -57,7 +54,7 @@ export const login = async (req, res) => {
     // Створюємо JWT токен
     const token = jwt.sign(
       { userId: user.id, email: user.email },
-      JWT_SECRET,
+      process.env.JWT_SECRET,
       { expiresIn: '24h' }
     )
 

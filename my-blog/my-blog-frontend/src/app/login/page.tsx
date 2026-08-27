@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
-import Link from 'next/link'
+import { ApiError } from '@/lib/api'
+import type { AuthResponse } from '@/types'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -20,15 +21,23 @@ export default function LoginPage() {
     e.preventDefault()
     try {
       if (isLoginMode) {
-        const res = await api.post('/auth/login', { email, password })
-        login(res.data.user, res.data.token)
+        const res = await api.post<AuthResponse>('/auth/login', { email, password })
+        login(res.user, res.token)
       } else {
-        const res = await api.post('/auth/register', { email, password, name })
-        login(res.data.user, res.data.token)
+        // Реєстрація токена не повертає — після неї одразу логінимось
+        await api.post('/auth/register', { email, password, name })
+        const res = await api.post<AuthResponse>('/auth/login', { email, password })
+        login(res.user, res.token)
       }
       router.push('/')
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Помилка')
+    } catch (err) {
+      // Бекенд на 400 віддає details зі списком полів — показуємо перше,
+      // бо воно конкретніше за загальне «Некоректні дані».
+      const apiError = err instanceof ApiError ? err : null
+      setError(
+        apiError?.data?.details?.[0]?.message ||
+          (err instanceof Error ? err.message : 'Помилка')
+      )
     }
   }
 

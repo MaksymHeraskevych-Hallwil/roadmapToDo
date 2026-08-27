@@ -12,8 +12,12 @@ RUN npm install
 # Копіюємо решту файлів
 COPY . .
 
+# Адресу API треба знати вже на етапі білду:
+# Next.js вшиває NEXT_PUBLIC_* змінні прямо в клієнтський бандл.
+ARG NEXT_PUBLIC_API_URL=/api
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
 # Робимо "білд" Next.js додатку
-# В Next.js .env зчитується під час білду, але поки пропускаємо
 RUN npm run build
 
 # Відкриваємо 3000 порт

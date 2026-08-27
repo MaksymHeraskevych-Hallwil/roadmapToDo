@@ -5,12 +5,29 @@ import {
   deleteComment
 } from '../controllers/comments.controller'
 import authMiddleware from '../middlewares/auth.middleware'
+import validate from '../middlewares/validate.middleware'
+import {
+  createCommentSchema,
+  updateCommentSchema,
+  idParamSchema,
+} from '../schemas'
 
 const router = express.Router()
 
 // Усі роути коментарів захищені (потребують токен)
-router.post('/', authMiddleware, createComment)
-router.put('/:id', authMiddleware, updateComment)
-router.delete('/:id', authMiddleware, deleteComment)
+router.post('/', authMiddleware, validate(createCommentSchema), createComment)
+router.put(
+  '/:id',
+  authMiddleware,
+  validate(idParamSchema, 'params'),
+  validate(updateCommentSchema),
+  updateComment
+)
+router.delete(
+  '/:id',
+  authMiddleware,
+  validate(idParamSchema, 'params'),
+  deleteComment
+)
 
 export default router

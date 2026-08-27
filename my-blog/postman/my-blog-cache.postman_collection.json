@@ -1,0 +1,803 @@
+{
+  "info": {
+    "_postman_id": "b1a7c4e2-5d3f-4a91-8c6e-2f0d9a7b3e15",
+    "name": "my-blog — кешування Redis",
+    "description": "Наочна перевірка кешу: ті самі запити до і після прогріву, плюс скидання кешу після зміни даних.\n\nЯк користуватись: Run collection (кнопка Run) — запити виконаються по черзі згори вниз, у вкладці Test Results буде видно, де MISS, а де HIT.\n\nЗмінна baseUrl за замовчуванням вказує на бекенд напряму (http://localhost:5050), щоб не морочитись із самопідписаним сертифікатом. Щоб перевірити повний шлях через NGINX, постав https://localhost і ввімкни Settings → General → SSL certificate verification → OFF.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5050",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "postId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "email",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "missTime",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Підготовка",
+      "item": [
+        {
+          "name": "Health — чи живий Redis",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('сервер відповідає', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"кеш підключений (cache: 'up')\", () => {",
+                  "    pm.expect(body.cache).to.eql('up');",
+                  "});",
+                  "if (body.cache !== 'up') {",
+                  "    console.log('Redis недоступний. Підніми стек: docker compose up -d');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Реєстрація",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Унікальний email, щоб колекцію можна було ганяти багато разів",
+                  "pm.collectionVariables.set('email', 'postman-' + Date.now() + '@test.com');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('користувач створений', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"password123\",\n  \"name\": \"Postman\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Логін — зберігаємо токен",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('логін успішний', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('token', pm.response.json().token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Створити пост",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('пост створений', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('postId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Пост для перевірки кешу\",\n  \"content\": \"Текст\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/posts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Список постів: без кешу і з кешем",
+      "item": [
+        {
+          "name": "Запит 1 — БЕЗ кешу (очікуємо MISS)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('статус 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('X-Cache: MISS — відповідь порахована з бази', () => {",
+                  "    pm.expect(pm.response.headers.get('X-Cache')).to.eql('MISS');",
+                  "});",
+                  "",
+                  "// Запамʼятовуємо час, щоб потім порівняти з кешованим",
+                  "pm.collectionVariables.set('missTime', pm.response.responseTime);",
+                  "console.log('БЕЗ кешу: ' + pm.response.responseTime + ' ms');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/posts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts"
+              ]
+            },
+            "description": "Перший запит після зміни даних. Кеш порожній, тому Express іде в PostgreSQL, віддає результат і кладе його в Redis на 60 секунд."
+          }
+        },
+        {
+          "name": "Запит 2 — З кешу (очікуємо HIT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('статус 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('X-Cache: HIT — відповідь із Redis, база не смикалась', () => {",
+                  "    pm.expect(pm.response.headers.get('X-Cache')).to.eql('HIT');",
+                  "});",
+                  "",
+                  "const miss = Number(pm.collectionVariables.get('missTime'));",
+                  "const hit = pm.response.responseTime;",
+                  "console.log('З кешу: ' + hit + ' ms (без кешу було ' + miss + ' ms)');",
+                  "",
+                  "pm.test('дані ідентичні до кешованих', () => {",
+                  "    pm.expect(pm.response.json().data).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/posts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts"
+              ]
+            },
+            "description": "Той самий запит. Тепер відповідь лежить у Redis — PostgreSQL не залучається взагалі."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Інвалідація: зміна даних скидає кеш",
+      "item": [
+        {
+          "name": "Створити ще один пост",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('пост створений', () => pm.response.to.have.status(201));",
+                  "console.log('Кеш posts:list щойно видалено контролером');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Другий пост\",\n  \"content\": \"Цей пост має зламати кеш списку\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/posts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Запит 3 — знову MISS, у списку новий пост",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('X-Cache: MISS — кеш скинуто після створення поста', () => {",
+                  "    pm.expect(pm.response.headers.get('X-Cache')).to.eql('MISS');",
+                  "});",
+                  "",
+                  "pm.test('новий пост уже у відповіді (застарілих даних немає)', () => {",
+                  "    const titles = pm.response.json().data.map(p => p.title);",
+                  "    pm.expect(titles).to.include('Другий пост');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/posts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts"
+              ]
+            },
+            "description": "Якби інвалідації не було, тут ще 60 секунд віддавався б старий список без нового поста."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Окремий пост має власний ключ",
+      "item": [
+        {
+          "name": "Пост — перший раз (MISS)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('X-Cache: MISS', () => {",
+                  "    pm.expect(pm.response.headers.get('X-Cache')).to.eql('MISS');",
+                  "});",
+                  "console.log('Ключ у Redis: post:' + pm.collectionVariables.get('postId'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/posts/{{postId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts",
+                "{{postId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Пост — другий раз (HIT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('X-Cache: HIT', () => {",
+                  "    pm.expect(pm.response.headers.get('X-Cache')).to.eql('HIT');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/posts/{{postId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts",
+                "{{postId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Додати коментар",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('коментар створений', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"postId\": {{postId}},\n  \"content\": \"Коментар має скинути кеш саме цього поста\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/comments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "comments"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Пост — MISS через новий коментар",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('X-Cache: MISS — коментар скинув кеш поста', () => {",
+                  "    pm.expect(pm.response.headers.get('X-Cache')).to.eql('MISS');",
+                  "});",
+                  "",
+                  "pm.test('коментар видно у відповіді', () => {",
+                  "    pm.expect(pm.response.json().comments.length).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/posts/{{postId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts",
+                "{{postId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Список — досі HIT (кеші незалежні)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('X-Cache: HIT — коментар не зачепив кеш списку', () => {",
+                  "    pm.expect(pm.response.headers.get('X-Cache')).to.eql('HIT');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/posts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts"
+              ]
+            },
+            "description": "Коментар змінює тільки сторінку поста. Список постів від цього не застаріває, тому його кеш лишається живим."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Пагінація",
+      "item": [
+        {
+          "name": "Сторінка 1 (limit=2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('статус 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('є метадані пагінації', () => {",
+                  "    pm.expect(body.meta).to.have.property('page', 1);",
+                  "    pm.expect(body.meta).to.have.property('limit', 2);",
+                  "    pm.expect(body.meta).to.have.property('totalPages');",
+                  "});",
+                  "console.log('Всього постів: ' + body.meta.total + ', сторінок: ' + body.meta.totalPages);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/posts?page=1&limit=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "2"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Сторінка 2 має власний кеш (MISS)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('X-Cache: MISS — кожна сторінка кешується окремо', () => {",
+                  "    pm.expect(pm.response.headers.get('X-Cache')).to.eql('MISS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/posts?page=2&limit=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "2"
+                },
+                {
+                  "key": "limit",
+                  "value": "2"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "limit=100000 — обійти пагінацію не можна",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 замість вивантаження всієї бази', () => pm.response.to.have.status(400));",
+                  "pm.test('сказано, яке поле не так', () => {",
+                  "    pm.expect(pm.response.json().details[0].field).to.eql('limit');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/posts?limit=100000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100000"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Валідація",
+      "item": [
+        {
+          "name": "Пост із порожнім заголовком — 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400, а не 201', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('вказано конкретне поле', () => {",
+                  "    pm.expect(body.details.map(d => d.field)).to.include('title');",
+                  "});",
+                  "console.log(JSON.stringify(body.details));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"   \",\n  \"content\": \"Текст\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/posts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Короткий пароль — 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('поле password', () => {",
+                  "    pm.expect(pm.response.json().details[0].field).to.eql('password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"short@test.com\",\n  \"password\": \"123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Без токена — 401 (не 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('спершу «хто ти», потім «що прислав»', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/posts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

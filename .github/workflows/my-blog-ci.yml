@@ -1,0 +1,125 @@
+name: my-blog CI
+
+# Ганяємо тести на кожен push і кожен PR, але тільки коли реально
+# змінилось щось усередині my-blog — решта репозиторію тут ні до чого.
+on:
+  push:
+    paths:
+      - 'my-blog/**'
+      - '.github/workflows/my-blog-ci.yml'
+  pull_request:
+    paths:
+      - 'my-blog/**'
+      - '.github/workflows/my-blog-ci.yml'
+
+jobs:
+  backend:
+    name: Бекенд — тести
+    runs-on: ubuntu-latest
+
+    # Порти навмисно ті самі, що в docker-compose.test.yml (5433/6380),
+    # щоб .env.test лишався єдиним джерелом правди й локально, і в CI.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: blog_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blog_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: my-blog/my-express-app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+          cache-dependency-path: my-blog/my-express-app/package-lock.json
+
+      # ci, а не install: ставить рівно те, що в лок-файлі,
+      # і падає, якщо package.json з ним розійшовся
+      - run: npm ci
+
+      - name: Згенерувати Prisma-клієнт
+        run: npx prisma generate
+
+      - name: Перевірити типи
+        run: npm run build
+
+      - name: Юніт-тести
+        run: npm run test:unit
+
+      - name: Накотити міграції на тестову базу
+        run: npx dotenv -e .env.test -- npx prisma migrate deploy
+
+      - name: Інтеграційні тести
+        # Бази вже підняті як services, тому запускаємо jest напряму,
+        # без docker compose з npm run test:integration
+        run: npx dotenv -e .env.test -- npx jest -c jest.integration.config.js
+
+  frontend:
+    name: Фронтенд — збірка
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: my-blog/my-blog-frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: my-blog/my-blog-frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Лінт
+        run: npm run lint
+
+      - name: Збірка
+        run: npm run build
+
+  nginx:
+    name: NGINX — перевірка конфігу
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Ловить одруківку в nginx.conf до того, як вона покладе прод.
+      #
+      # --add-host обов'язковий: nginx резолвить імена upstream'ів
+      # ще на етапі перевірки конфігу, а поза docker-мережею
+      # frontend і backend не існують — тест падав би завжди.
+      - name: nginx -t
+        working-directory: my-blog/nginx
+        run: |
+          docker build -t my-blog-nginx-test .
+          docker run --rm \
+            --add-host frontend:127.0.0.1 \
+            --add-host backend:127.0.0.1 \
+            my-blog-nginx-test nginx -t
