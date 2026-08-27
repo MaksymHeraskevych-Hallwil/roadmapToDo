@@ -53,11 +53,10 @@ jobs:
           MINIO_ROOT_PASSWORD: minioadmin
         ports:
           - 9100:9000
-        options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/live"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
+        # Healthcheck тут навмисно не задаємо: в образі MinIO немає ні
+        # curl, ні wget, тому будь-яка команда всередині контейнера
+        # провалиться і GitHub вважатиме сервіс несправним.
+        # Чекаємо готовності з раннера окремим кроком нижче.
 
     defaults:
       run:
@@ -84,6 +83,16 @@ jobs:
 
       - name: Юніт-тести
         run: npm run test:unit
+
+      - name: Дочекатись MinIO
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9100/minio/health/live; then
+              echo "MinIO готовий"; exit 0
+            fi
+            sleep 2
+          done
+          echo "MinIO не піднявся за 60 секунд"; exit 1
 
       # Бакет створюємо тим самим mc, що й у docker-compose.test.yml
       - name: Створити бакет у MinIO
