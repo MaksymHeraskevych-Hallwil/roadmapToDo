@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:15
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
@@ -11,7 +11,11 @@ services:
     expose:
       - "5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # У 18+ образ зберігає дані в /var/lib/postgresql/<версія>/docker,
+      # тому монтуємо теку рівнем вище — інакше сервер не стартує.
+      # Том навмисно новий: старий pgdata має формат 15-ї версії й
+      # несумісний. Як перенести дані — див. my-express-app/README.md.
+      - pgdata18:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres -d blog']
       interval: 5s
@@ -167,6 +171,6 @@ services:
       - nginx
 
 volumes:
-  pgdata:
+  pgdata18:
   nginx-certs:
   minio-data:

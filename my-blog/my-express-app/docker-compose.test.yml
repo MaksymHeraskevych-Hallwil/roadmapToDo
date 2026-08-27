@@ -11,15 +11,17 @@ services:
   # проєкту на одній машині борються за одне й те саме імʼя контейнера.
   # Compose сам додасть префікс проєкту.
   postgres-test:
-    image: postgres:15
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
       POSTGRES_DB: blog_test
     ports:
       - "5433:5432"
+    # У 18+ образ тримає дані в /var/lib/postgresql/<версія>/docker,
+    # тому монтувати треба сюди, а не в .../data (як було до 17).
     tmpfs:
-      - /var/lib/postgresql/data
+      - /var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres -d blog_test']
       interval: 2s

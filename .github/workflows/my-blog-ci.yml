@@ -21,7 +21,7 @@ jobs:
     # щоб .env.test лишався єдиним джерелом правди й локально, і в CI.
     services:
       postgres:
-        image: postgres:15
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: password
