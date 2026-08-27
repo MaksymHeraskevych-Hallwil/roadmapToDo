@@ -97,7 +97,9 @@ jobs:
       # Бакет створюємо тим самим mc, що й у docker-compose.test.yml
       - name: Створити бакет у MinIO
         run: |
-          docker run --rm --network host minio/mc:latest sh -c "
+          # --entrypoint sh обов'язковий: у образі mc точка входу — сам
+          # бінарник mc, тому без цього "sh" поїде йому як аргумент.
+          docker run --rm --network host --entrypoint sh minio/mc:latest -c "
             mc alias set local http://localhost:9100 minioadmin minioadmin &&
             mc mb --ignore-existing local/blog-media-test &&
             mc anonymous set download local/blog-media-test
